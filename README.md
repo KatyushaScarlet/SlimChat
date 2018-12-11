@@ -1,11 +1,11 @@
 # SlimChat
 An online chat website powered by Node.js
 
-Demo: https://slimchat.top
+Demo: https://slimchat.ml
 
 一个使用Node.js搭建的在线聊天网站
 
-演示地址: https://slimchat.top
+演示地址: https://slimchat.ml
 
 目前已实现的功能：
 </br>
