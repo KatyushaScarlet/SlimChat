@@ -1,0 +1,579 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>SlimChat</title>
+    <link rel="stylesheet" href="css/bootstrap.min.css" />
+    <link rel="stylesheet" href="css/index.css" />
+    <script type="text/javascript" src="js/jquery-3.2.1.min.js"></script>
+    <script type="text/javascript" src="js/bootstrap.min.js"></script>
+    <script type="text/javascript" src="js/socket.io.js"></script>
+    <script type="text/javascript" src="js/md5.js"></script>
+    <script type="text/javascript" src="https://www.recaptcha.net/recaptcha/api.js"></script>
+</head>
+	<body>
+		<div class="row">
+			<div class="col-md-6 col-md-offset-3">
+				<h1 class="text-center">Welcome to SlimChat !</h1>
+				<h3 class="text-center">Please Login</h3>
+				<div class="row">
+					<div class="col-xs-9 div-half">
+						<div id="div-history">
+							
+						</div>
+					</div>
+					<div class="col-xs-3 div-half">
+						<div id="div-users">
+							
+						</div>
+					</div>
+					<div id="area-user">
+						<div id="div-tools">
+							<div id="formEmoji">
+								
+							</div>
+							<input type="color" class="btn btn-default" style="width: 54px;height: 34px;" id="colorSelect"/>
+							<input type="button" value="表情" class="btn btn-default" id="btnEmoji"/>
+							<span id="fileSpan">
+								<input type="file" id="fileInput" style="display: none;"/>
+								<input type="button" value="图片" class="btn btn-default" id="btnImage"/>
+							</span>
+							<input type="button" value="清屏"  class="btn btn-default" id="btnClearScreen"/>
+						</div>
+						<div id="div-text">
+							<textarea id="textSend"></textarea>
+							<div align="right"\>
+								<span style="color: #BBBBBB;">按 Ctrl + Enter 键发送消息</span>
+								<input type="button" value="发送" class="btn btn-default" id="btnSend"/>
+								<input type="button" value="重置" class="btn btn-default" id="btnClear"/>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	<div class="modal fade" id="modalLogin" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+		<div class="modal-dialog" style="width: 400px;">
+			<div class="modal-content">
+				<div class="modal-header">
+					<button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+					<h4 class="modal-title" id="myModalLabel">
+						欢迎使用 SlimChat - Beta 
+					</h4>
+					
+				</div>
+				<div class="modal-body">
+					<p id="status" class="text-danger">正在连接至服务器……</p>
+                    <div id="loginWapper">
+                        <p class="itemRequired">姓名</p>
+                        <input type="text" id="inputName" />
+                        <p>电子邮件</p>
+                        <input type="text" id="inputMail" />
+                        <p>站点</p>
+                        <input type="text" id="inputUrl" />
+                        <div class="g-recaptcha" data-sitekey="6LdSpUAUAAAAACpgcW_WPDqte35A0OLqwDm6KdwV"></div>
+                    </div>
+				</div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" id="btnSubmit">确认</button>
+                </div>
+			</div>
+		</div>
+	</div>
+	<script>
+		//用户信息
+		var user = {};//当前用户信息
+		user.name = null;//当前用户昵称
+		user.mail = null;//当前用户电子邮件
+		user.url = null;//当前用户站点
+		
+		//其他信息
+        var socket = null;//套接字流
+        var flagOnline = false;//是否成功登陆
+        var lastTime = 0;//上次发送消息时间（毫秒）
+        var thisTime = 0;//本次发送消息时间（毫秒）
+        var date = null;//时间对象
+        var verifyCode = null;//reCAPTCHA回调值
+
+        //初始化
+        window.onload=function(){
+        	//——————————DEBUG————————————
+        	socket = io.connect();
+        	//socket = io.connect("https://slimchat.top");
+        	$("#modalLogin").modal();//初始化模态框
+        	//——————————DEBUG————————————
+            	socket.on("connect",function(){//连接成功事件
+            		$("#modalLogin").keypress(function (key) {//提交按钮绑定快捷键 enter
+						if (key.which == 13 || key.which == 10) {
+							$("#btnSubmit").click();
+						}
+					});
+            		
+            		$("#status").text("电子邮件地址不会被公开，必填项已用 * 标注");
+            		$("#loginWapper")[0].style.display="block";
+                    $("#btnSubmit").click(function () {
+                        verifyCode = grecaptcha.getResponse();//reCAPTCHA
+            			user.name = $.trim($("#inputName").val());//姓名
+                        userMail = $.trim($("#inputMail").val());//邮箱
+                        if (!verifyCode) {
+                            $("#status").text("请点击下方的验证按钮");
+                            return;
+                        }
+            			if (userMail) {
+            				user.mail = hex_md5(userMail.toLowerCase());//若不为空，则转到md5
+            			}
+            			userUrl = $.trim($("#inputUrl").val());//网址
+            			if (userUrl) {
+            				user.url = "http://" + userUrl;//若不为空，则添加http头
+                        }
+                        if (user.name) {//如果昵称不为空
+            				$("#status").text("提交中……");
+                            $("#loginWapper")[0].style.display = "none";
+                            socket.emit("login", user, verifyCode);//发起登录事件，同时提交信息
+        	   		    } else {
+        	   		    	$("#status").text("昵称不合法，请重新输入");
+        	        	};
+            		});
+            	});
+            	
+            	//用户登录事件
+            	socket.on("loginStatus",function(userStatus){
+                    if (userStatus == "success") {//登录成功
+                        flagOnline = true;//更新在线状态
+                        $("#modalLogin").modal("hide");//隐藏模态框
+
+                        $("#btnSend").click(function () {
+                            //文字发送方法绑定
+                            textContent = $("#textSend").val();
+
+                            date = new Date();
+                            thisTime = date.getTime();//获取本次发送时间
+
+                            if (thisTime - lastTime >= 1000) {//比较时间间隔
+                                if (textContent && textContent.length <= 1000) {//消息不可为空，并小于1000个字符
+                                    if (textContent.length <= 1000) {
+                                        textColor = $("#colorSelect").val();
+                                        socket.emit("text", textContent, textColor);//发起消息事件
+                                        textContent = $("#textSend").val("");
+                                        date = new Date();
+                                        lastTime = date.getTime();//更新消息发送时间
+
+                                    } else {
+                                        addInfo("消息过长，请分段发送");//消息过长的情况
+                                    };
+                                };
+                            } else {
+                                addInfo("输入太快啦，喝杯咖啡休息一下吧");//输入过快的情况
+                            }
+                        });
+
+                        $("#btnImage").click(function () {
+                            return $("#fileInput").click();//将点击事件传至input:file对象
+                        });
+
+                        $("#textSend").keypress(function (key) {//发送按钮绑定快捷键 ctrl + enter
+                            if (key.ctrlKey && key.which == 13 || key.which == 10) {
+                                $("#btnSend").click();
+                            }
+                        });
+
+                        $("#fileInput")[0].onchange = function () {
+                            //图片发送方法绑定
+                            date = new Date();
+                            thisTime = date.getTime();//获取本次发送时间
+
+                            if (thisTime - lastTime >= 1000) {//比较时间间隔
+                                var file = document.querySelector('input[type=file]').files[0];
+                                var reader = new FileReader();
+
+                                reader.addEventListener("load", function () {
+                                    if (countImageSize(reader.result) <= 400) {//如果图片小于400KB
+                                        socket.emit("image", reader.result);//发送图片
+                                        $("#fileInput").val(null);//清空值，修复选择相同文件不触发的bug
+
+                                        date = new Date();
+                                        lastTime = date.getTime();//更新消息发送时间
+                                    } else {
+                                        addInfo("请上传小于400KB的图片");
+                                    };
+                                }, false);
+
+                                if (file) {
+                                    reader.readAsDataURL(file);
+                                };
+                            } else {
+                                addInfo("输入太快啦，喝杯咖啡休息一下吧");//输入过快的情况
+                            }
+                        }
+
+                    } else if (userStatus == "nameExisted") {
+                        $("#status").text("昵称已被使用，请重新输入");
+                        $("#inputName").val("");
+                        $("#loginWapper")[0].style.display = "block";
+                    } else if (userStatus == "nameNonHalal") {
+                        $("#status").text("昵称不合法，请重新输入");
+                        $("#inputName").val("");
+                        $("#loginWapper")[0].style.display = "block";
+                    } else if (userStatus == "nameTooLong") {
+                        $("#status").text("昵称过长，请保持在20个字符内");
+                        $("#inputName").val("");
+                        $("#loginWapper")[0].style.display = "block";
+                    } else if (userStatus == "verifyFail") {//reCAPTCHA
+                        $("#status").text("验证失败");
+                        $("#inputName").val("");
+                        $("#loginWapper")[0].style.display = "block";
+                    }
+            	});
+            	
+            	//用户加入或退出
+            	socket.on("user",function(userName,userStatus){
+            		if(userStatus=="login"){
+            			addInfo(userName + " 已加入");
+            		}else{
+            			addInfo(userName + " 已离开");
+            		}
+            	});
+            	
+            	socket.on("userTooFast",function(){
+            		addInfo("输入太快啦，喝杯咖啡休息一下吧");
+            	})
+            	
+            	socket.on("msgTooLong",function(){
+            		addInfo("消息过长，请分段发送");
+            	})
+            	
+            	
+            	socket.on("imageTooLarge",function(){
+            		addInfo("请上传小于400KB的图片");
+            	})
+            	
+            	//文字消息到达
+            	socket.on("textMessage",function(user,content,color){
+            		//将emoji部分替换为img元素
+            		/*
+            		 [emoji:(0-49)] ==> (\[emoji:)([0-4]{0,1}[0-9])(\])
+            		 <img src=\"./content/emoji/pic$2.png\" alt=\"[emoji:$2]\" />
+            		 //正则替换时只保留第二个括号内容（即id）
+            		 //新增了alt属性，可直接复制图片为emoji代码
+            		 //新增尖括号转义，阻止XSS注入
+            		 //新增空格转义，支持长空格
+            		 //新增回车转义，支持换行
+            		 */
+            		
+            		content = content.replace(/</g, '&lt;').replace(/>/g, '&gt;');//转义尖括号
+            		content = content.replace(/\n/g, "<br/>");//转义换行符
+            		content = content.replace(/\s/g, "&ensp;");//转义空格
+            		content = content.replace(/(\[emoji:)([0-4]{0,1}[0-9])(\])/g, "<img src=\"./content/emoji/pic$2.png\" alt=\"[emoji:$2]\" />");
+            		
+            		addText(user,content,color);//输出消息信息
+            	});
+            	
+            	//图片消息到达
+            	socket.on("imageMessage",function(user,content){
+            		addImage(user,content);//输出图片信息
+            	});
+            	
+            	//刷新用户列表
+            	socket.on("flushUsers",function(users){//TODO 待实现用户列表
+            		
+            		console.log("now " + users.length + "users");
+            		
+           			if (users.length == 1) {
+           				$("h3").text("1 user online");
+           			}
+           			else{
+           				$("h3").text(users.length + " users online");
+           			};
+           			
+           			$("#div-users").empty();//清空用户列表
+           			
+           			if (users.length > 0) {
+	           			for (var i = 0; i < users.length; i++) {
+	         	  			console.log("add " + users[i].name);
+							addUser(users[i]);
+           				}
+           			}
+           			
+            	});
+            	
+            	//套接字断开事件
+            	socket.on("disconnect",function(){
+            		flagOnline = false;
+            		$("#modalLogin").modal();
+            		$("#status").text("连接被断开，请在刷新页面后重新登录");
+            		$("#loginWapper")[0].style.display="none";
+            		$("#btnSubmit").click(function(){
+            			$("#status").text("请稍候……");
+            			location.reload();//刷新页面
+            		});
+            	});
+        };
+        
+		//不提交直接关闭
+		$('#modalLogin').on('hidden.bs.modal', function () {
+			if(!flagOnline){//如果为非在线状态
+				$("#modalLogin").modal();//再次弹窗
+			}
+		});
+		
+        //用户信息，内容，颜色，是否系统消息
+        function addText(user,content,color){//
+           	avaterLetter = user.name[0].toUpperCase();//获取首字母并大写
+			
+			divMessage = document.createElement("div");
+			divMessage.className="div-message clearfix";
+
+			textAvater = document.createElement("p");
+			textAvater.className = "avater";
+			textAvater.textContent = avaterLetter;
+			divMessage.appendChild(textAvater);//添加头像（仅首字母）
+
+			if (user.mail) {//若邮箱md5不为空，则加载头像
+				imgAvater = document.createElement("img");
+				imgAvater.className = "avater";
+				imgAvater.src = "https://secure.gravatar.com/avatar/" + user.mail + "?s=40"; //从gravater获取头像
+				imgAvater.onload = function(){//在图像加载完成后再替换原DOM，防止出现加载不全
+					textAvater.replaceWith(imgAvater);//添加头像
+				}
+			}
+			
+			if (user.url) {//若网址不为空，则添加事件
+				if (this.imgAvater) {//如果头像被加载
+					imgAvater.onclick = function(){//添加点击事件
+						window.open(user.url);
+					}
+				}
+				textAvater.onclick = function(){//添加点击事件
+					window.open(user.url);
+				}
+			}
+			
+			textTime = document.createElement("p");
+			textTime.className= "p-time";
+			textTime.textContent = getNowTime();
+			divMessage.appendChild(textTime);//添加当前时间
+			
+			textTitle = document.createElement("p");
+			textTitle.className = "p-title";
+			textTitle.textContent = user.name;
+			divMessage.appendChild(textTitle);//添加昵称
+			
+			textMessage = document.createElement("p");
+			textMessage.className = "p-message";
+			textMessage.innerHTML = content;//以html形式读入
+			textMessage.style.color = color ? color : "black";
+			divMessage.appendChild(textMessage);
+			
+			textHistory = $("#div-history")[0];
+			textHistory.appendChild(divMessage);
+			textHistory.scrollTop=textHistory.scrollHeight;//滚动条下拉
+		}
+        
+        //用户信息，图片（base64数据）
+		function addImage(user,image,mail,url){
+           	avaterLetter = user.name[0].toUpperCase();//获取首字母并大写
+
+			divMessage = document.createElement("div");
+			divMessage.className="div-message clearfix";
+			
+			textAvater = document.createElement("p");
+			textAvater.className = "avater";
+			textAvater.textContent = avaterLetter;
+			divMessage.appendChild(textAvater);//添加头像（仅首字母）
+
+			if (user.mail) {//若邮箱md5不为空，则加载头像
+				imgAvater = document.createElement("img");
+				imgAvater.className = "avater";
+				imgAvater.src = "https://secure.gravatar.com/avatar/" + user.mail + "?s=40"; //从gravater获取头像
+				imgAvater.onload = function(){//在图像加载完成后再替换原DOM，防止出现加载不全
+					textAvater.replaceWith(imgAvater);//添加头像
+				}
+			}
+			
+			if (user.url) {//若网址不为空，则添加事件
+				if (this.imgAvater) {//如果头像被加载
+					imgAvater.onclick = function(){//添加点击事件
+						window.open(user.url);
+					}
+				}
+				textAvater.onclick = function(){//添加点击事件
+					window.open(user.url);
+				}
+			}
+					
+			textTime = document.createElement("p");
+			textTime.className = "p-time";
+			textTime.textContent = getNowTime();
+			divMessage.appendChild(textTime);//添加时间
+			
+			textTitle = document.createElement("p");
+			textTitle.className = "p-title";
+			textTitle.textContent = user.name;
+			divMessage.appendChild(textTitle);//添加昵称
+			
+			imageMessage = document.createElement("img");
+			imageMessage.className = "img-message";
+			imageMessage.src=image;
+			imageMessage.onload = function(){
+				textHistory.scrollTop=textHistory.scrollHeight;//图片加载完成后再次下拉滚动条
+			}
+			divMessage.appendChild(imageMessage);//添加图片
+			
+			textHistory = $("#div-history")[0];
+			textHistory.appendChild(divMessage);
+			textHistory.scrollTop=textHistory.scrollHeight;//滚动条下拉
+        }
+        
+        //在列表中添加用户
+        function addUser(user){
+        	avaterLetter = user.name[0].toUpperCase();//获取首字母并大写
+        	
+        	divUser = document.createElement("div");
+        	divUser.className = "div-user clearfix";
+        	
+        	textAvater = document.createElement("p");
+			textAvater.className = "avater-small";
+			textAvater.textContent = avaterLetter;
+			divUser.appendChild(textAvater);//添加头像（仅首字母）
+
+			if (user.mail) {//若邮箱md5不为空，则加载头像
+				console.log(user.name + " has avater : " + user.mail);
+				imgAvater = document.createElement("img");
+				imgAvater.className = "avater-small";
+				imgAvater.src = "https://secure.gravatar.com/avatar/" + user.mail + "?s=40"; //从gravater获取头像
+				//imgAvater.onload = function(){//在图像加载完成后再替换原DOM，防止出现加载不全 TODO debug
+					textAvater.replaceWith(imgAvater);
+				//}
+			}
+			
+			if (user.url) {//若网址不为空，则添加事件
+				if (this.imgAvater) {//如果头像被加载
+					imgAvater.onclick = function(){//添加点击事件
+						window.open(user.url);
+					}
+				}
+				textAvater.onclick = function(){//添加点击事件
+					window.open(user.url);
+				}
+			}
+        	
+        	textName = document.createElement("p");
+        	textName.textContent = user.name;
+        	textName.className = "p-name";
+        	divUser.appendChild(textName);
+        	
+        	divUsers = $("#div-users")[0];
+        	divUsers.appendChild(divUser);
+        }
+        
+        //输出系统消息方法
+        function addInfo(content){
+        	divInfo = document.createElement("div");
+        	divInfo.className="div-info clearfix";
+        	
+        	textInfo = document.createElement("p");
+        	textInfo.className = "p-info";
+        	textInfo.textContent = content;
+        	
+        	divInfo.appendChild(textInfo);
+        	
+        	textHistory = $("#div-history")[0];
+        	textHistory.appendChild(divInfo);
+        	textHistory.scrollTop=textHistory.scrollHeight;//滚动条下拉
+        }
+        
+		//定义表情弹框按钮
+		let isDisplay = false;
+		$("#formEmoji").click(function (e) {
+			e.stopPropagation();//阻止点击事件冒泡
+		})
+		$("#btnEmoji").click(function (e) {
+			e.stopPropagation();//阻止点击事件冒泡
+			if (isDisplay) {
+				$("#formEmoji")[0].style.display = "none";
+				$(document.body).unbind();//隐藏后取消监听事件
+				isDisplay = false;
+			} else {
+				$("#formEmoji")[0].style.display = "block";
+				$(document.body).bind("click", (function () {//监听点击事件
+					$("#btnEmoji")[0].click();
+				}));
+				isDisplay = true;
+			}
+		});
+
+		
+		//定义重置按钮事件
+		$("#btnClear").click(function(){
+			$("#textSend").val("");
+		});
+		
+		//定义清屏按钮事件
+		$("#btnClearScreen").click(function(){
+			$("#div-history").empty();
+		})
+		
+		//批量添加表情
+		for (var x = 0 ; x < 50 ; x++) {
+			var emojiUrl="./content/emoji/pic"+x+".png";//图片源
+			
+			emojiForm = $("#formEmoji")[0];
+			newEmojiA=document.createElement("a");//创建包裹图片的链接
+			newEmojiPic = document.createElement("img");//创建图片对象
+			//图片对象的属性
+			newEmojiPic.style.width="30px";
+			newEmojiPic.style.height="30px";
+			newEmojiPic.src=emojiUrl;
+			//链接对象的属性
+			newEmojiA.id="emoji:"+x;
+			newEmojiA.href="javascript:;"
+			newEmojiA.className="emojiPic";
+			//绑定被单击事件
+			newEmojiA.addEventListener("click",function(){
+				$("#textSend")[0].value+="["+this.id+"]";
+			});
+			
+			newEmojiA.appendChild(newEmojiPic)//将img元素添加进a元素
+			emojiForm.appendChild(newEmojiA);//再添加入表情框中
+		}
+		
+/*		//测试按钮
+		$("#btnTest1").click(function(){//for debug
+			var tempUser = {};
+			tempUser.name="我可去你手柄的吧";
+			tempUser.mail=hex_md5("katyushascarlet@outlook.com");
+			tempUser.url="katyusha.net";
+			
+			addText(tempUser,"我可去你手柄的吧","#66CCFF");
+		});
+		
+		$("#btnTest2").click(function(){//for debug
+			var tempUser = {};
+			tempUser.name="我可去你手柄的吧";
+			tempUser.mail=hex_md5("katyushascarlet@outlook.com");
+			tempUser.url="http://katyusha.net";
+			
+			addUser(tempUser);
+		});*/
+		
+		//动态设置高度
+		nowHeight = document.documentElement.clientHeight - 350;
+		$("#formEmoji")[0].style.top = nowHeight - 70 + "px";
+		$("#div-history")[0].style.height = nowHeight +"px";
+		$("#div-users")[0].style.height = nowHeight +"px";
+		
+		//获取当前时间并格式化，格式 XX:XX:XX
+		function getNowTime(){
+			nowDate = new Date();
+			nowTime = ( nowDate.getHours() > 9 ? nowDate.getHours() : "0" + nowDate.getHours() ) + ":" + ( nowDate.getMinutes() > 9 ? nowDate.getMinutes() : "0" + nowDate.getMinutes() ) + ":" + ( nowDate.getSeconds() > 9 ? nowDate.getSeconds() : "0" + nowDate.getSeconds() );
+			return nowTime;
+		};
+		
+		//计算base64格式的图片大小
+		function countImageSize(base64) {
+			return (base64.length - ( base64.length / 8) * 2) / 1000;
+		};
+	</script>
+	</body>
+</html>

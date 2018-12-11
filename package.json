@@ -1,0 +1,16 @@
+{
+  "name": "slimchat",
+  "version": "2.5.0",
+  "description": "SlimChat",
+  "main": "server.js",
+  "author": {
+    "name": "Katyusha"
+  },
+  "dependencies": {
+    "axios": "^0.17.1",
+    "express": "^4.16.2",
+    "jquery": "^3.3.1",
+    "jsdom": "^11.6.2",
+    "socket.io": "^2.0.4"
+  }
+}
